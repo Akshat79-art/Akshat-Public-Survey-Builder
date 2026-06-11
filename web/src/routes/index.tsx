@@ -1,3 +1,8 @@
+/*
+  index.tsx — Route: /
+  Landing page. Shown to visitors who aren't signed in.
+  Links to /sign-in and explains what the app does.
+*/
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/')({
@@ -6,11 +11,9 @@ export const Route = createFileRoute('/')({
 
 function Home() {
   return (
-    <main style={{ padding: 24, fontFamily: 'system-ui, sans-serif' }}>
-      <h1>Survey Builder — starter</h1>
-      <p>
-        Replace this with the app. See <code>README.md</code> at the repo root.
-      </p>
+    <main>
+      <h1>Survey Builder</h1>
+      <p>Create branded surveys, share them, and collect responses.</p>
     </main>
   )
 }
