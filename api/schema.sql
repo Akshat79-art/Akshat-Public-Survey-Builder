@@ -14,6 +14,7 @@
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
+    username TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
