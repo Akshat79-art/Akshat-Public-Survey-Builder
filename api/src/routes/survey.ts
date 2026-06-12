@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
+import { getAuth } from '@clerk/hono'
 
-const surveyRouter = new Hono<{ Bindings: Env, Variables: { clerkAuth: { userId: string } } }>()
+const surveyRouter = new Hono<{ Bindings: Env }>()
 
 // Zod Schema to strictly validate the incoming JSON body
 const createSurveySchema = z.object({
@@ -11,6 +12,7 @@ const createSurveySchema = z.object({
 })
 
 const updateSurveySchema = z.object({
+  title: z.string().optional(),
   brand_color: z.string().optional(),
   logo_url: z.string().optional(),
   questions: z.array(z.object({
@@ -18,8 +20,11 @@ const updateSurveySchema = z.object({
     question_type: z.string(),
     question_text: z.string(),
     order_index: z.number(),
-    is_required: z.boolean().default(false),
-    type_specific_options: z.record(z.string(), z.unknown()).optional() // Flexibly cast back into JSON string
+    is_required: z.union([z.boolean(), z.literal(0), z.literal(1)]).transform((v) => v === true || v === 1).default(false),
+    type_specific_options: z.union([z.record(z.string(), z.unknown()), z.string()]).optional().transform((v) => {
+      if (typeof v === 'string') { try { return JSON.parse(v) } catch { return null } }
+      return v
+    }),
   }))
 })
 
@@ -31,10 +36,12 @@ const updateSurveySchema = z.object({
  */
 surveyRouter.get('/', async (c) => {
   try {
-    const userId = c.get('clerkAuth').userId;
-    const { results } = await c.env.DB.prepare('SELECT * FROM surveys WHERE user_id = ?').bind(userId).all();
+    const auth = getAuth(c);
+    if (!auth.userId) return c.json({ error: 'Unauthorized' }, 401);
+    const { results } = await c.env.DB.prepare('SELECT * FROM surveys WHERE user_id = ?').bind(auth.userId).all();
     return c.json({ surveys: results });
   } catch (e: any) {
+    console.error('GET /api/surveys error:', e);
     return c.json({ error: e.message }, 500);
   }
 })
@@ -47,16 +54,23 @@ surveyRouter.get('/', async (c) => {
  */
 surveyRouter.post('/', zValidator('json', createSurveySchema), async (c) => {
   try {
-    const userId = c.get('clerkAuth').userId;
+    const auth = getAuth(c);
+    if (!auth.userId) return c.json({ error: 'Unauthorized' }, 401);
     const { title, url_slug } = c.req.valid('json');
     const id = crypto.randomUUID(); // Build-in Web Crypto UUID generation
-    
+
+    // Ensure the user exists in the database before creating a survey.
+    // Necessary because the FK constraint on surveys.user_id references users.id,
+    // and the syncUser flow might not have completed yet.
+    await c.env.DB.prepare('INSERT OR IGNORE INTO users (id) VALUES (?)').bind(auth.userId).run();
+
     await c.env.DB.prepare(
       'INSERT INTO surveys (id, user_id, title, url_slug) VALUES (?, ?, ?, ?)'
-    ).bind(id, userId, title, url_slug).run();
+    ).bind(id, auth.userId, title, url_slug).run();
 
     return c.json({ success: true, id });
   } catch (e: any) {
+    console.error('POST /api/surveys error:', e);
     return c.json({ error: e.message }, 500);
   }
 })
@@ -69,13 +83,18 @@ surveyRouter.post('/', zValidator('json', createSurveySchema), async (c) => {
  */
 surveyRouter.get('/:id', async (c) => {
   try {
-    const userId = c.get('clerkAuth').userId;
+    const userId = getAuth(c).userId;
     const surveyId = c.req.param('id');
     
     const survey = await c.env.DB.prepare('SELECT * FROM surveys WHERE id = ? AND user_id = ?').bind(surveyId, userId).first();
     if (!survey) return c.json({ error: 'Survey not found or unauthorized' }, 404);
 
-    const { results: questions } = await c.env.DB.prepare('SELECT * FROM questions WHERE survey_id = ? ORDER BY order_index ASC').bind(surveyId).all();
+    const { results: rows } = await c.env.DB.prepare('SELECT * FROM questions WHERE survey_id = ? ORDER BY order_index ASC').bind(surveyId).all();
+    const questions = rows.map((q: any) => ({
+      ...q,
+      is_required: q.is_required === 1 || q.is_required === true,
+      type_specific_options: q.type_specific_options ? JSON.parse(q.type_specific_options) : null,
+    }));
     return c.json({ survey, questions });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
@@ -90,18 +109,18 @@ surveyRouter.get('/:id', async (c) => {
  */
 surveyRouter.put('/:id', zValidator('json', updateSurveySchema), async (c) => {
   try {
-    const userId = c.get('clerkAuth').userId;
+    const userId = getAuth(c).userId;
     const surveyId = c.req.param('id');
-    const { brand_color, logo_url, questions } = c.req.valid('json');
+    const { title, brand_color, logo_url, questions } = c.req.valid('json');
 
     // Security checkpoint: Verify ownership
     const survey = await c.env.DB.prepare('SELECT id FROM surveys WHERE id = ? AND user_id = ?').bind(surveyId, userId).first();
     if (!survey) return c.json({ error: 'Unauthorized' }, 401);
 
-    // 1. Update branding directly on the survey row
+    // 1. Update survey metadata
     await c.env.DB.prepare(
-      'UPDATE surveys SET brand_color = ?, logo_url = ? WHERE id = ?'
-    ).bind(brand_color || '#000000', logo_url || null, surveyId).run();
+      'UPDATE surveys SET title = COALESCE(?, title), brand_color = ?, logo_url = ? WHERE id = ?'
+    ).bind(title || null, brand_color || '#000000', logo_url || null, surveyId).run();
 
     // 2. Clear out old questions
     await c.env.DB.prepare('DELETE FROM questions WHERE survey_id = ?').bind(surveyId).run();
@@ -134,7 +153,7 @@ surveyRouter.put('/:id', zValidator('json', updateSurveySchema), async (c) => {
  */
 surveyRouter.get('/:id/responses', async (c) => {
   try {
-    const userId = c.get('clerkAuth').userId;
+    const userId = getAuth(c).userId;
     const surveyId = c.req.param('id');
     
     // Security checkpoint: Ensure the user actually owns the survey before returning responses
@@ -142,7 +161,11 @@ surveyRouter.get('/:id/responses', async (c) => {
     if (!survey) return c.json({ error: 'Unauthorized' }, 401);
 
     const { results } = await c.env.DB.prepare('SELECT * FROM responses WHERE survey_id = ? ORDER BY submitted_at DESC').bind(surveyId).all();
-    return c.json({ responses: results });
+    const responses = results.map((r: any) => ({
+      ...r,
+      answers: r.answers ? JSON.parse(r.answers) : {},
+    }));
+    return c.json({ responses });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
   }

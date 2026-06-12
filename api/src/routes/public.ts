@@ -21,7 +21,12 @@ publicRouter.get('/:slug', async (c) => {
     const survey = await c.env.DB.prepare('SELECT id, title, brand_color, logo_url FROM surveys WHERE url_slug = ?').bind(slug).first();
     if (!survey) return c.json({ error: 'Survey not found or inactive' }, 404);
 
-    const { results: questions } = await c.env.DB.prepare('SELECT * FROM questions WHERE survey_id = ? ORDER BY order_index ASC').bind(survey.id).all();
+    const { results: rows } = await c.env.DB.prepare('SELECT * FROM questions WHERE survey_id = ? ORDER BY order_index ASC').bind(survey.id).all();
+    const questions = rows.map((q: any) => ({
+      ...q,
+      is_required: q.is_required === 1 || q.is_required === true,
+      type_specific_options: q.type_specific_options ? JSON.parse(q.type_specific_options) : null,
+    }));
     return c.json({ survey, questions });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);

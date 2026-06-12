@@ -1,5 +1,88 @@
 /*
   hooks.ts — All TanStack Query hooks live here.
-  Each hook owns a query key, a fetch function, and optional cache config.
-  Routes just call useSurveys() — they don't care how the data arrives.
+  Each hook uses useAuth() from Clerk to get the JWT token for API calls.
+  When Clerk isn't configured (dev mode), token is null and API calls
+  will 401 — handled gracefully in the UI.
 */
+
+import { useAuth } from '@clerk/clerk-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createSurvey, getResponses, getSurvey, getSurveys, syncUser, updateSurvey } from './lib/api'
+import type { Question } from './types'
+
+function useToken() {
+  const auth = useAuth()
+  return auth.getToken
+}
+
+export function useSurveys() {
+  const getToken = useToken()
+  return useQuery({
+    queryKey: ['surveys'],
+    queryFn: async () => {
+      const token = await getToken()
+      const res = await getSurveys(token)
+      return res.surveys
+    },
+  })
+}
+
+export function useSurvey(id: string) {
+  const getToken = useToken()
+  return useQuery({
+    queryKey: ['survey', id],
+    queryFn: async () => {
+      const token = await getToken()
+      return getSurvey(token, id)
+    },
+  })
+}
+
+export function useCreateSurvey() {
+  const getToken = useToken()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: { title: string; url_slug: string }) => {
+      const token = await getToken()
+      return createSurvey(token, data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surveys'] }),
+  })
+}
+
+export function useUpdateSurvey(id: string) {
+  const getToken = useToken()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: { title?: string; brand_color?: string; logo_url?: string; questions: Question[] }) => {
+      const token = await getToken()
+      return updateSurvey(token, id, data)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['survey', id] })
+      qc.invalidateQueries({ queryKey: ['surveys'] })
+    },
+  })
+}
+
+export function useSyncUser() {
+  const getToken = useToken()
+  return useMutation({
+    mutationFn: async (data: { email: string; username: string }) => {
+      const token = await getToken()
+      return syncUser(token, data)
+    },
+  })
+}
+
+export function useResponses(id: string) {
+  const getToken = useToken()
+  return useQuery({
+    queryKey: ['responses', id],
+    queryFn: async () => {
+      const token = await getToken()
+      const res = await getResponses(token, id)
+      return res.responses
+    },
+  })
+}

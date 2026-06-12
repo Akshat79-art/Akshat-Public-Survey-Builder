@@ -1,12 +1,12 @@
 import { Hono } from 'hono'
-import { clerkMiddleware } from '@hono/clerk-auth'
+import { clerkMiddleware } from '@clerk/hono'
 import surveyRouter from './routes/survey'
 import publicRouter from './routes/public'
 import userRouter from './routes/user'
 
 import { cors } from 'hono/cors'
 
-const app = new Hono<{ Bindings: Env, Variables: { clerkAuth: { userId: string } } }>()
+const app = new Hono<{ Bindings: Env }>()
 
 // Allow CORS so our Vite dev server (localhost:5173) isn't blocked by the browser.
 app.use('/api/*', cors({
@@ -33,12 +33,8 @@ app.route('/api/public', publicRouter)
    If verification fails, it returns 401 Unauthorized automatically.
    It reads CLERK_SECRET_KEY from .dev.vars locally and from wrangler secrets in production. 
 */
-app.use('/api/surveys/*', (c, next) => {
-  return clerkMiddleware({ secretKey: c.env.CLERK_SECRET_KEY })(c, next)
-})
-app.use('/api/users/*', (c, next) => {
-  return clerkMiddleware({ secretKey: c.env.CLERK_SECRET_KEY })(c, next)
-})
+app.use('/api/surveys/*', clerkMiddleware())
+app.use('/api/users/*', clerkMiddleware())
 
 app.route('/api/surveys', surveyRouter)
 app.route('/api/users', userRouter)

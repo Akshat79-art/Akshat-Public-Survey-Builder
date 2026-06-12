@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
+import { getAuth } from '@clerk/hono'
 
-const userRouter = new Hono<{ Bindings: Env, Variables: { clerkAuth: { userId: string } } }>()
+const userRouter = new Hono<{ Bindings: Env }>()
 
 const syncUserSchema = z.object({
   email: z.string().email(), // Zod natively validates this is formatted exactly like an email
@@ -17,12 +18,13 @@ const syncUserSchema = z.object({
  */
 userRouter.post('/sync', zValidator('json', syncUserSchema), async (c) => {
   try {
-    const userId = c.get('clerkAuth').userId;
+    const auth = getAuth(c);
+    if (!auth.userId) return c.json({ error: 'Unauthorized' }, 401);
     const { email, username } = c.req.valid('json');
 
     const { success } = await c.env.DB.prepare(
       'INSERT OR IGNORE INTO users (id, email, username) VALUES (?, ?, ?)'
-    ).bind(userId, email, username).run();
+    ).bind(auth.userId, email, username).run();
 
     // Check if D1 reported a failure
     if (!success) {
@@ -31,6 +33,7 @@ userRouter.post('/sync', zValidator('json', syncUserSchema), async (c) => {
 
     return c.json({ success: true, synced: true });
   } catch (error: any) {
+    console.error('POST /api/users/sync error:', error);
     return c.json({ success: false, error: error.message }, 500); // Catch any unexpected exceptions (like network drops or malformed queries)
   }
 })

@@ -16,13 +16,13 @@ export interface Survey {
 
 export interface Question {
   id: string
-  survey_id: string
+  survey_id?: string
   question_type: 'short_text' | 'multiple_choice' | 'rating'
   question_text: string
   order_index: number
   is_required: boolean
-  type_specific_options: Record<string, unknown> | null
-  created_at: string
+  type_specific_options: Record<string, unknown>
+  created_at?: string
 }
 
 export interface Response {
