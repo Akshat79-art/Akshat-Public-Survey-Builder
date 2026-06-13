@@ -2,7 +2,6 @@
   dashboard/route.tsx — Route: /dashboard (layout)
   Auth guard: redirects to /sign-in if unauthenticated.
   Syncs the Clerk user to the backend on first load.
-  Top nav bar with centered branding and profile icon on the right.
 */
 import { useAuth, useUser, useClerk } from '@clerk/clerk-react'
 import { Link, createFileRoute, Outlet, useNavigate } from '@tanstack/react-router'
@@ -15,27 +14,22 @@ export const Route = createFileRoute('/dashboard')({
 })
 
 function DashboardLayout() {
-  const { isLoaded, isSignedIn, userId } = useAuth()
+  const { isLoaded, isSignedIn } = useAuth()
   const { user } = useUser()
   const { signOut } = useClerk()
-  const sync = useSyncUser()
+  const email = user?.primaryEmailAddress?.emailAddress
+  useSyncUser(email, user?.username)
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
 
+  /*
+    If not signed in, go back and sign in.
+  */
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
       navigate({ to: '/sign-in' })
     }
   }, [isLoaded, isSignedIn, navigate])
-
-  useEffect(() => {
-    if (userId && user?.primaryEmailAddress?.emailAddress) {
-      sync.mutate({
-        email: user.primaryEmailAddress.emailAddress,
-        username: user.username ?? user.fullName ?? 'User',
-      })
-    }
-  }, [userId, user])
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -47,14 +41,14 @@ function DashboardLayout() {
 
   if (!isLoaded || !isSignedIn) return null
 
-  const displayName = user?.username ?? user?.fullName ?? 'User'
+  const displayName = user?.username ?? 'User'
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-200 via-indigo-100/50 to-purple-200">
       <header className="border-b border-slate-200 bg-white">
         <div className="relative mx-auto flex max-w-6xl items-center justify-center px-6 py-3">
           <Link to="/dashboard" className="text-lg font-semibold tracking-tight text-indigo-800">
-            Survey Builder
+            Survey Bee
           </Link>
           <div className="absolute right-6">
             <button

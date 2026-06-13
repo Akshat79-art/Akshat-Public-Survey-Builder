@@ -65,13 +65,25 @@ export function useUpdateSurvey(id: string) {
   })
 }
 
-export function useSyncUser() {
+/*
+  useSyncUser — Syncs the Clerk user into our D1 database.
+  Accepts nullable values because Clerk's user object may not have loaded yet.
+  The query only fires (enabled) when both email and username are truthy strings,
+  so null/undefined values are safe to pass — they just delay execution until
+  the data is ready. Fires at most once per user session.
+*/
+export function useSyncUser(email: string | null | undefined, username: string | null | undefined) {
   const getToken = useToken()
-  return useMutation({
-    mutationFn: async (data: { email: string; username: string }) => {
+  return useQuery({
+    queryKey: ['sync-user', email, username],
+    queryFn: async () => {
       const token = await getToken()
-      return syncUser(token, data)
+      return syncUser(token, { email: email!, username: username! })
     },
+    enabled: !!email && !!username,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
   })
 }
 

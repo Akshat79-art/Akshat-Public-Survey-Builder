@@ -15,6 +15,56 @@ import { Card, CardContent } from '@/components/ui/card'
 import { fetchPublicSurvey, submitPublicResponse } from '@/lib/api'
 import type { Question } from '@/types'
 
+const SECTION_COUNT = 6
+function makeDropSquare(id: number, sectionIndex: number) {
+  const sectionWidth = 100 / SECTION_COUNT
+  return {
+    id,
+    x: sectionIndex * sectionWidth + Math.random() * sectionWidth * 0.7 + sectionWidth * 0.15,
+    delay: Math.random() * 1.8,
+    duration: 1.5 + Math.random() * 1.5,
+    rotation: (Math.random() - 0.5) * 20,
+    size: 1.5 + Math.random() * 2.5,
+    color: id % 3 === 0 ? '#3730a3' : id % 3 === 1 ? '#4f46e5' : '#6366f1',
+    distance: 40 + Math.random() * 140,
+  }
+}
+const EXTRA_COUNT = Math.floor(Math.random() * 15)
+const DROP_SQUARES = Array.from({ length: SECTION_COUNT + EXTRA_COUNT }, (_, i) =>
+  i < SECTION_COUNT ? makeDropSquare(i, i) : makeDropSquare(i, Math.floor(Math.random() * SECTION_COUNT)),
+)
+
+function FallingSquares() {
+  return (
+    <>
+      <style>{`
+        @keyframes drop {
+          0% { transform: translateY(-120px) rotate(0deg); opacity: 0; }
+          10% { opacity: 1; }
+          85% { opacity: 1; }
+          100% { transform: translateY(var(--drop-distance)) rotate(var(--drop-rotation)); opacity: 0.6; }
+        }
+      `}</style>
+      {DROP_SQUARES.map((s) => (
+        <div
+          key={s.id}
+          className="absolute top-0 rounded-xl border-2 pointer-events-none"
+          style={{
+            left: `${s.x}%`,
+            width: `${s.size}rem`,
+            height: `${s.size}rem`,
+            borderColor: s.color,
+            backgroundColor: `color-mix(in srgb, ${s.color} 15%, transparent)`,
+            animation: `drop ${s.duration}s ease-in ${s.delay}s both`,
+            '--drop-distance': `${s.distance}px`,
+            '--drop-rotation': `${s.rotation}deg`,
+          } as React.CSSProperties}
+        />
+      ))}
+    </>
+  )
+}
+
 export const Route = createFileRoute('/s/$slug')({
   component: PublicSurveyPage,
 })
@@ -26,6 +76,7 @@ function PublicSurveyPage() {
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Set<string>>(new Set())
+  const [dropping] = useState(true)
 
   /*
     useQuery — TanStack Query's data-fetching hook.
@@ -102,25 +153,47 @@ function PublicSurveyPage() {
 
   if (submitted) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-        <Card className="w-full max-w-lg border-slate-200 text-center">
-          <CardContent className="py-16">
-            <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-green-100">
-              <svg className="size-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 className="mb-2 text-xl font-semibold text-slate-900">Response submitted</h2>
-            <p className="text-sm text-slate-500">Thank you for your feedback.</p>
-          </CardContent>
-        </Card>
+      <div className="relative min-h-screen overflow-x-hidden bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+        {dropping && (
+          <div className="absolute inset-0 overflow-x-hidden pointer-events-none">
+            <FallingSquares />
+          </div>
+        )}
+        <div className="absolute bottom-0 left-0 w-full overflow-x-hidden pointer-events-none" style={{ height: '10rem' }}>
+          <svg viewBox="0 0 1440 120" preserveAspectRatio="none" className="h-full w-full">
+            <path d="M0,40 C360,120 1080,0 1440,60 L1440,120 L0,120 Z" fill="var(--color-indigo-800)" opacity="0.4" />
+          </svg>
+        </div>
+        <div className="relative z-10 flex min-h-screen items-center justify-center p-4">
+          <Card className="w-full max-w-lg border-slate-200 text-center">
+            <CardContent className="py-16">
+              <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-green-100">
+                <svg className="size-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="mb-2 text-xl font-semibold text-slate-900">Response submitted</h2>
+              <p className="text-sm text-slate-500">Thank you for your feedback.</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-2xl px-4 py-16">
+    <div className="relative min-h-screen overflow-x-hidden bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+      {dropping && (
+        <div className="absolute inset-0 overflow-x-hidden pointer-events-none">
+          <FallingSquares />
+        </div>
+      )}
+      <div className="absolute bottom-0 left-0 w-full overflow-x-hidden pointer-events-none" style={{ height: '10rem' }}>
+        <svg viewBox="0 0 1440 120" preserveAspectRatio="none" className="h-full w-full">
+          <path d="M0,40 C360,120 1080,0 1440,60 L1440,120 L0,120 Z" fill="var(--color-indigo-800)" opacity="0.4" />
+        </svg>
+      </div>
+      <div className="relative z-10 mx-auto max-w-2xl px-4 py-16">
         <Card className="border-slate-200">
           <CardContent className="p-8">
             {survey.logo_url && (
@@ -162,6 +235,7 @@ function PublicSurveyPage() {
               {submitting ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : null}
               Submit
             </Button>
+            <p className="mt-4 text-center text-xs text-slate-400">Powered by Survey Bee</p>
           </CardContent>
         </Card>
       </div>
